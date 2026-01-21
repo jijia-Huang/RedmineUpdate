@@ -1,0 +1,45 @@
+{
+  "redmine": {
+    "url": "https://redmine.example.com",
+    "api_key": "your_api_key_here",
+    "user_id": null
+  },
+  "git": {
+    "user": {
+      "name": "",
+      "email": ""
+    },
+    "auto_detect": true
+  },
+  "ai": {
+    "provider": "claude",
+    "claude": {
+      "cli_path": "claude",
+      "model": "haiku",
+      "timeout": 60,
+      "system_prompt_file": "prompts/redmine_analysis.txt"
+    },
+    "gemini": {
+      "cli_path": "gemini",
+      "model": "gemini-2.0-flash-exp",
+      "timeout": 60,
+      "system_prompt_file": "prompts/redmine_analysis.txt"
+    }
+  },
+  "claude": {
+    "use_cli": true,
+    "cli_path": "claude",
+    "model": "haiku",
+    "timeout": 60,
+    "output_format": "json",
+    "system_prompt_file": "prompts/redmine_analysis.txt"
+  },
+  "repositories": [],
+  "scan_paths": [],
+  "default_time_range": "本週",
+  "ui": {
+    "theme": "light",
+    "language": "zh-TW"
+  }
+}
+

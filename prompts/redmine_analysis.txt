@@ -1,0 +1,27 @@
+你是一位專業的工程師，請分析以下 commit 記錄，並生成一份 Redmine 進度回報。
+
+**重要**：你必須**只輸出 JSON 格式**，不要包含任何其他文字、說明或 Markdown。輸出格式必須嚴格遵循以下結構：
+
+{
+  "summary": "摘要",
+  "completed_items": ["項目1", "項目2"],
+  "technical_details": ["細節1"],
+  "blockers": [],
+  "next_steps": ["下一步1"],
+  "estimated_hours": 8.5,
+  "suggested_percent_done": 75
+}
+
+工單資訊：
+- Issue ID: {issue_id}
+- 標題: {issue_title}
+
+Commit 記錄（{start_date} 至 {end_date}）：
+{commit_list}
+
+**輸出要求**：
+1. 只輸出 JSON，不要有任何前綴文字、後綴文字或說明
+2. 不要使用 Markdown code block（不要用 ```json 或 ```）
+3. 直接輸出純 JSON 格式
+4. 回報語言：繁體中文，風格：專業、簡潔、技術導向
+5. 所有欄位都必須存在，如果沒有資料請使用空陣列 [] 或空字串 ""

@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Redmine 進度回報工具</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .page { display: none; }
+    .page.active { display: block; }
+  </style>
+</head>
+<body class="bg-slate-50">
+  <!-- Header -->
+  <header class="sticky top-0 z-50 bg-white border-b border-slate-200 shadow-sm">
+    <div class="max-w-6xl mx-auto px-6 py-4">
+      <div class="flex items-center justify-between">
+        <h1 class="text-2xl font-bold text-slate-900">Redmine 進度回報工具</h1>
+        <button id="settingsBtn" class="px-3 py-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-md transition-colors cursor-pointer">
+          設定
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-6xl mx-auto px-6 py-8">
+    <!-- Page 1: Issue List -->
+    <div id="page-issue-list" class="page active">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-2xl font-bold text-slate-900">我的工單</h2>
+        <button id="refreshBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 cursor-pointer font-medium flex items-center space-x-2">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <span>重新整理</span>
+        </button>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-lg p-4 mb-6">
+        <div class="flex items-center space-x-4">
+          <div class="flex items-center space-x-2">
+            <label class="text-sm font-medium text-slate-700">篩選：</label>
+            <select id="statusFilter" class="px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-sm">
+              <option value="all">全部</option>
+              <option value="1">進行中</option>
+              <option value="2">待處理</option>
+              <option value="3">已關閉</option>
+            </select>
+          </div>
+          <div class="flex-1">
+            <input type="text" id="searchInput" placeholder="搜尋工單標題或編號..." class="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+          </div>
+        </div>
+      </div>
+
+      <div id="issueList" class="space-y-4">
+        <div id="loadingState" class="text-center py-12">
+          <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <p class="mt-4 text-slate-600">載入中...</p>
+        </div>
+      </div>
+
+      <div id="emptyState" class="hidden text-center py-12">
+        <svg class="mx-auto h-12 w-12 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-slate-900">沒有工單</h3>
+        <p class="mt-1 text-sm text-slate-500">目前沒有指派給你的工單</p>
+      </div>
+    </div>
+
+    <!-- Page 2: Repository Selection -->
+    <div id="page-repo-select" class="page">
+      <h2 class="text-2xl font-bold text-slate-900 mb-2">選擇 Git 儲存庫和分支</h2>
+      <p class="text-slate-600 mb-6">工單：<span id="selectedIssueTitle"></span></p>
+
+      <div class="bg-white border border-slate-200 rounded-lg p-6 space-y-6">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-2">儲存庫：</label>
+          <div class="flex flex-col gap-3">
+            <div class="flex gap-2">
+              <div class="flex-1 relative">
+                <input id="repoSearchInput" type="text" placeholder="搜尋儲存庫名稱或路徑..." class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 pr-10">
+                <button id="clearRepoSearchBtn" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">✕</button>
+              </div>
+              <input type="file" id="folderPicker" webkitdirectory directory multiple style="display: none;" />
+              <button id="addRepoBtn" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors whitespace-nowrap">新增/選擇資料夾...</button>
+            </div>
+
+            <div class="flex items-center justify-between">
+              <p class="text-sm text-slate-600">找到 <span id="repoCount">0</span> 個儲存庫</p>
+              <button id="toggleRepoViewBtn" class="text-sm text-blue-700 hover:text-blue-900">切換到下拉選單</button>
+            </div>
+
+            <!-- List view (default) -->
+            <div id="repoList" class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+              <div class="text-sm text-slate-500 py-2">載入中...</div>
+            </div>
+
+            <!-- Dropdown view (fallback) -->
+            <div id="repoSelectWrap" class="hidden">
+              <select id="repoSelect" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">載入中...</option>
+              </select>
+              <p class="mt-2 text-xs text-slate-500">提示：如果列表太多不好找，可用上方搜尋；或切換到下拉選單。</p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-2">分支：</label>
+          <div id="branchList" class="space-y-2">
+            <p class="text-slate-500">請先選擇儲存庫</p>
+          </div>
+        </div>
+
+        <div class="flex justify-between pt-4">
+          <button id="backToIssuesBtn" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">上一步</button>
+          <button id="nextToTimeRangeBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors" disabled>下一步：選擇時間範圍</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 3: Time Range Selection -->
+    <div id="page-time-range" class="page">
+      <h2 class="text-2xl font-bold text-slate-900 mb-6">選擇要分析的 Commit 時間範圍</h2>
+
+      <div class="bg-white border border-slate-200 rounded-lg p-6 space-y-4">
+        <div>
+          <label class="flex items-center space-x-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+            <input type="radio" name="timeRange" value="today" class="text-blue-600">
+            <span>今天</span>
+          </label>
+        </div>
+        <div>
+          <label class="flex items-center space-x-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+            <input type="radio" name="timeRange" value="yesterday" class="text-blue-600">
+            <span>昨天</span>
+          </label>
+        </div>
+        <div>
+          <label class="flex items-center space-x-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+            <input type="radio" name="timeRange" value="thisWeek" checked class="text-blue-600">
+            <span>本週</span>
+          </label>
+        </div>
+        <div>
+          <label class="flex items-center space-x-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+            <input type="radio" name="timeRange" value="lastWeek" class="text-blue-600">
+            <span>上週</span>
+          </label>
+        </div>
+        <div>
+          <label class="flex items-center space-x-3 p-3 border border-slate-200 rounded-lg cursor-pointer hover:bg-slate-50">
+            <input type="radio" name="timeRange" value="custom" class="text-blue-600">
+            <span>自訂：</span>
+            <input type="date" id="customStartDate" class="px-2 py-1 border border-slate-300 rounded" disabled>
+            <span>至</span>
+            <input type="date" id="customEndDate" class="px-2 py-1 border border-slate-300 rounded" disabled>
+          </label>
+        </div>
+
+        <div id="commitPreview" class="mt-4 p-4 bg-blue-50 rounded-lg">
+          <p class="text-sm text-blue-800">預覽：找到 <span id="commitCount">0</span> 個 commit</p>
+          <p class="text-xs text-blue-600 mt-1">當前使用者：<span id="currentGitUser">載入中...</span></p>
+        </div>
+
+        <div class="flex justify-between pt-4">
+          <button id="backToRepoBtn" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">上一步</button>
+          <button id="startAnalysisBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">開始分析</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 4: Analyzing -->
+    <div id="page-analyzing" class="page">
+      <div class="text-center py-12">
+        <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        <h2 class="mt-4 text-xl font-semibold text-slate-900">分析中...</h2>
+        <p class="mt-2 text-slate-600">正在分析 commit 記錄並生成進度回報</p>
+        <p class="mt-1 text-sm text-slate-500" id="analyzingCommits">準備中...</p>
+        <p class="mt-4 text-xs text-slate-400">這可能需要 10-30 秒，請稍候...</p>
+      </div>
+    </div>
+
+    <!-- Page 5: Review & Edit -->
+    <div id="page-review" class="page">
+      <h2 class="text-2xl font-bold text-slate-900 mb-6">AI 分析結果 - 請確認並微調</h2>
+
+      <div class="bg-white border border-slate-200 rounded-lg p-6 space-y-6">
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-2">回報內容（Notes）：</label>
+          <textarea id="notesInput" rows="10" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-2">進度百分比：</label>
+            <input type="number" id="percentDoneInput" min="0" max="100" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-700 mb-2">狀態：</label>
+            <select id="statusInput" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="1">進行中</option>
+              <option value="2">待處理</option>
+              <option value="3">已解決</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-sm font-medium text-slate-700 mb-2">相關 Commit：</label>
+          <div id="commitsAnalyzed" class="text-sm text-slate-600 space-y-1"></div>
+        </div>
+
+        <div class="flex justify-between pt-4">
+          <button id="backToTimeRangeBtn" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">上一步</button>
+          <button id="confirmUpdateBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">確認並更新到 Redmine</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Page 6: Update Result -->
+    <div id="page-result" class="page">
+      <div id="successResult" class="hidden text-center py-12">
+        <svg class="mx-auto h-12 w-12 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <h2 class="mt-4 text-xl font-semibold text-slate-900">更新成功！</h2>
+        <p class="mt-2 text-slate-600">進度回報已成功更新到 Redmine</p>
+        <a id="redmineLink" href="#" target="_blank" class="mt-4 inline-block px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">查看 Redmine Issue</a>
+        <button id="backToIssuesFromResultBtn" class="mt-4 ml-4 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">返回工單列表</button>
+      </div>
+
+      <div id="errorResult" class="hidden text-center py-12">
+        <svg class="mx-auto h-12 w-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <h2 class="mt-4 text-xl font-semibold text-slate-900">更新失敗</h2>
+        <p class="mt-2 text-red-600" id="errorMessage"></p>
+        <div id="failedFields" class="mt-4 text-sm text-slate-600"></div>
+        <button id="retryUpdateBtn" class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">重試</button>
+        <button id="backToReviewBtn" class="mt-4 ml-4 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">返回編輯</button>
+      </div>
+    </div>
+
+    <!-- Page 7: Settings -->
+    <div id="page-settings" class="page">
+      <h2 class="text-2xl font-bold text-slate-900 mb-6">設定</h2>
+
+      <div class="bg-white border border-slate-200 rounded-lg p-6 space-y-6">
+        <div>
+          <h3 class="text-lg font-semibold text-slate-900 mb-4">Redmine 設定</h3>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-2">Redmine URL：</label>
+              <input type="url" id="redmineUrlInput" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-2">API Key：</label>
+              <input type="password" id="redmineApiKeyInput" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="text-lg font-semibold text-slate-900 mb-4">AI 服務設定</h3>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-2">AI 服務提供者：</label>
+              <select id="aiProviderSelect" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="claude">Claude CLI</option>
+                <option value="gemini">Gemini CLI</option>
+              </select>
+            </div>
+            
+            <!-- Claude 設定 -->
+            <div id="claudeSettings" class="space-y-4">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">Claude CLI 路徑：</label>
+                <input type="text" id="claudeCliPathInput" value="claude" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">模型：</label>
+                <select id="claudeModelSelect" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="haiku">Haiku（最快、最省）</option>
+                  <option value="sonnet">Sonnet（平衡）</option>
+                  <option value="opus">Opus（最強）</option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- Gemini 設定 -->
+            <div id="geminiSettings" class="space-y-4 hidden">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">Gemini CLI 路徑：</label>
+                <input type="text" id="geminiCliPathInput" value="gemini" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">模型：</label>
+                <select id="geminiModelSelect" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="auto-gemini-3">Auto (Gemini 3)</option>
+                  <option value="auto-gemini-2.5">Auto (Gemini 2.5)</option>
+                  <optgroup label="Gemini 3 系列">
+                    <option value="gemini-3-pro-preview">Gemini 3 Pro Preview</option>
+                    <option value="gemini-3-flash-preview">Gemini 3 Flash Preview</option>
+                  </optgroup>
+                  <optgroup label="Gemini 2.5 系列">
+                    <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                  </optgroup>
+                  <optgroup label="其他模型">
+                    <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash Exp（推薦）</option>
+                    <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                    <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                  </optgroup>
+                </select>
+              </div>
+            </div>
+            
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-2">超時時間（秒）：</label>
+              <input type="number" id="aiTimeoutInput" min="10" max="600" value="120" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <p class="mt-1 text-xs text-slate-500">建議：Gemini 使用 120 秒以上，Claude 使用 60 秒以上</p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="text-lg font-semibold text-slate-900 mb-4">Git 設定</h3>
+          <div class="space-y-4">
+            <div>
+              <label class="flex items-center space-x-2">
+                <input type="checkbox" id="gitAutoDetectCheckbox" checked class="text-blue-600">
+                <span class="text-sm font-medium text-slate-700">自動偵測 Git 使用者設定</span>
+              </label>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-2">使用者名稱：</label>
+              <input type="text" id="gitUserNameInput" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled>
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-slate-700 mb-2">Email：</label>
+              <input type="email" id="gitUserEmailInput" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" disabled>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="text-lg font-semibold text-slate-900 mb-4">預設掃描資料夾</h3>
+          <div class="space-y-3">
+            <p class="text-sm text-slate-600">系統會自動掃描以下資料夾中的 Git 儲存庫：</p>
+            <div id="scanPathsList" class="space-y-2 max-h-48 overflow-y-auto border border-slate-200 rounded-lg p-3">
+              <!-- 動態生成的掃描路徑列表 -->
+            </div>
+            <input type="file" id="scanFolderPicker" webkitdirectory directory multiple style="display: none;" />
+            <button id="addScanPathBtn" type="button" class="w-full px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors text-sm font-medium">
+              + 新增掃描資料夾
+            </button>
+          </div>
+        </div>
+
+        <div class="flex justify-end space-x-4 pt-4">
+          <button id="cancelSettingsBtn" class="px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors">取消</button>
+          <button id="saveSettingsBtn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">儲存</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
