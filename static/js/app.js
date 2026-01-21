@@ -15,6 +15,93 @@ const state = {
   repoViewMode: 'list', // 'list' | 'select'
 };
 
+// Toast（取代 alert，降低打斷感）
+function showToast(message, type = 'info', timeoutMs = 3800) {
+  const host = document.getElementById('toastHost');
+  if (!host) {
+    // fallback
+    // eslint-disable-next-line no-alert
+    alert(message);
+    return;
+  }
+
+  const palette = {
+    info:  { ring: 'ring-blue-200',  bg: 'bg-white', iconBg: 'bg-blue-50',  iconText: 'text-blue-700',  title: '提示' },
+    success:{ ring: 'ring-green-200', bg: 'bg-white', iconBg: 'bg-green-50', iconText: 'text-green-700', title: '完成' },
+    warning:{ ring: 'ring-yellow-200',bg: 'bg-white', iconBg: 'bg-yellow-50',iconText: 'text-yellow-700',title: '注意' },
+    error:{ ring: 'ring-red-200',   bg: 'bg-white', iconBg: 'bg-red-50',   iconText: 'text-red-700',   title: '錯誤' },
+  };
+  const p = palette[type] || palette.info;
+
+  const el = document.createElement('div');
+  el.className = `rounded-xl border border-slate-200 ${p.bg} shadow-sm ring-1 ${p.ring} px-4 py-3`;
+  el.innerHTML = `
+    <div class="flex items-start gap-3">
+      <div class="shrink-0 w-9 h-9 rounded-lg ${p.iconBg} flex items-center justify-center ${p.iconText} font-semibold">
+        !
+      </div>
+      <div class="min-w-0 flex-1">
+        <div class="text-sm font-semibold text-slate-900">${p.title}</div>
+        <div class="text-sm text-slate-700 mt-0.5 break-words">${escapeHtml(message)}</div>
+      </div>
+      <button type="button" class="shrink-0 text-slate-400 hover:text-slate-600 px-2 -mt-1" aria-label="Close">✕</button>
+    </div>
+  `;
+
+  el.querySelector('button')?.addEventListener('click', () => el.remove());
+  host.appendChild(el);
+
+  window.setTimeout(() => {
+    el.classList.add('opacity-0', 'translate-y-1');
+    el.style.transition = 'all 200ms ease';
+    window.setTimeout(() => el.remove(), 220);
+  }, timeoutMs);
+}
+
+function escapeHtml(s) {
+  return (s ?? '')
+    .toString()
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function updateStepper(activeStep) {
+  const stepper = document.getElementById('stepper');
+  if (!stepper) return;
+  stepper.querySelectorAll('[data-step]').forEach(el => {
+    const isActive = el.dataset.step === activeStep;
+    el.classList.toggle('bg-blue-600', isActive);
+    el.classList.toggle('text-white', isActive);
+    el.classList.toggle('border-blue-600', isActive);
+    el.classList.toggle('bg-white', !isActive);
+    el.classList.toggle('text-slate-700', !isActive);
+    el.classList.toggle('border-slate-200', !isActive);
+  });
+}
+
+function setRedmineBadge(status, detail = '') {
+  const badge = document.getElementById('redmineStatusBadge');
+  if (!badge) return;
+  badge.classList.remove('hidden');
+  const dot = badge.querySelector('span.inline-block');
+  const text = badge.querySelector('span:last-child');
+  if (!dot || !text) return;
+
+  const map = {
+    unknown: { dot: 'bg-slate-400', wrap: 'bg-slate-100 text-slate-700 border-slate-200', label: 'Redmine：未檢查' },
+    ok:      { dot: 'bg-green-500', wrap: 'bg-green-50 text-green-800 border-green-200', label: 'Redmine：已連線' },
+    error:   { dot: 'bg-red-500',   wrap: 'bg-red-50 text-red-800 border-red-200', label: 'Redmine：連線失敗' },
+  };
+  const m = map[status] || map.unknown;
+
+  badge.className = `hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium border ${m.wrap}`;
+  dot.className = `inline-block w-2 h-2 rounded-full ${m.dot}`;
+  text.textContent = detail ? `${m.label}（${detail}）` : m.label;
+}
+
 function normalizeText(s) {
   return (s || '').toString().toLowerCase();
 }
@@ -136,6 +223,7 @@ function showPage(pageId) {
   if (page) {
     page.classList.add('active');
     state.currentPage = pageId;
+    updateStepper(pageId);
   }
 }
 
@@ -193,7 +281,7 @@ async function loadIssues(statusId = null, search = null) {
     });
   } catch (error) {
     loadingState.style.display = 'none';
-    alert(`載入工單失敗: ${error.message}`);
+    showToast(`載入工單失敗：${error.message}`, 'error');
   }
 }
 
@@ -264,7 +352,7 @@ async function loadRepositories() {
     renderRepoSelect(repos);
     renderRepoList(repos, document.getElementById('repoSearchInput')?.value || '');
   } catch (error) {
-    alert(`載入儲存庫失敗: ${error.message}`);
+    showToast(`載入儲存庫失敗：${error.message}`, 'error');
     repoSelect.innerHTML = '<option value="">載入失敗</option>';
     const list = document.getElementById('repoList');
     if (list) list.innerHTML = `<div class="text-sm text-red-600 py-2">載入失敗：${error.message}</div>`;
@@ -283,7 +371,7 @@ async function addRepository(repoPath) {
     
     // 檢查是否已存在
     if (repos.some(r => r.path === repoPath)) {
-      alert('此儲存庫已經在列表中');
+      showToast('此儲存庫已經在列表中', 'warning');
       loadRepositories();
       return;
     }
@@ -301,13 +389,13 @@ async function addRepository(repoPath) {
       body: JSON.stringify({ repositories: repos })
     });
     
-    alert('儲存庫已新增');
+    showToast('儲存庫已新增', 'success');
     loadRepositories();
     
     // 自動選擇剛新增的儲存庫
     selectRepository(repoPath);
   } catch (error) {
-    alert(`新增儲存庫失敗: ${error.message}\n\n請確認：\n1. 路徑是否正確\n2. 該路徑是否為有效的 Git 儲存庫`);
+    showToast(`新增儲存庫失敗：${error.message}（請確認路徑正確且為 Git 儲存庫）`, 'error', 6000);
   }
 }
 
@@ -468,7 +556,7 @@ async function updateCommitPreview() {
 async function startAnalysis() {
   const timeRange = getTimeRange(state.timeRange);
   if (!timeRange) {
-    alert('請選擇時間範圍');
+    showToast('請選擇時間範圍', 'warning');
     return;
   }
   
@@ -511,7 +599,7 @@ async function startAnalysis() {
       console.error('完整錯誤訊息:', error);
     }
     
-    alert(errorMessage);
+    showToast(errorMessage, 'error', 7000);
     showPage('time-range');
   }
 }
@@ -690,7 +778,7 @@ async function removeScanPath(index) {
     
     displayScanPaths(scanPaths);
   } catch (error) {
-    alert(`移除失敗: ${error.message}`);
+    showToast(`移除失敗：${error.message}`, 'error');
   }
 }
 
@@ -735,7 +823,7 @@ async function saveScanPath(path) {
     
     // 檢查是否已存在
     if (scanPaths.includes(path)) {
-      alert('此資料夾已經在掃描列表中');
+      showToast('此資料夾已經在掃描列表中', 'warning');
       return;
     }
     
@@ -748,7 +836,7 @@ async function saveScanPath(path) {
     
     displayScanPaths(scanPaths);
   } catch (error) {
-    alert(`新增失敗: ${error.message}`);
+    showToast(`新增失敗：${error.message}`, 'error');
   }
 }
 
@@ -792,11 +880,11 @@ async function saveSettings() {
       body: JSON.stringify(config)
     });
     
-    alert('設定已儲存');
+    showToast('設定已儲存', 'success');
     showPage('issue-list');
     loadIssues();
   } catch (error) {
-    alert(`儲存設定失敗: ${error.message}`);
+    showToast(`儲存設定失敗：${error.message}`, 'error');
   }
 }
 
@@ -817,8 +905,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 先主動重試 Redmine 連線，再載入工單（避免使用者以為「重新整理」沒動作）
     try {
       await apiCall('/redmine/ping');
+      setRedmineBadge('ok');
+      showToast('Redmine 連線正常，已重新整理工單。', 'success', 2200);
     } catch (error) {
-      alert(`Redmine 連線失敗，請檢查設定或網路：${error.message}`);
+      setRedmineBadge('error', error.message);
+      showToast(`Redmine 連線失敗，請檢查設定或網路：${error.message}`, 'error', 6000);
       return;
     }
 
@@ -892,7 +983,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 實際上，File System Access API 也無法直接取得完整路徑
         // 但我們可以讓用戶選擇資料夾後，提示輸入完整路徑
         const folderName = directoryHandle.name;
-        alert(`已選擇資料夾：${folderName}\n\n由於瀏覽器安全限制，請輸入該資料夾的完整路徑：`);
+        showToast(`已選擇資料夾：${folderName}。請在下一個視窗輸入完整路徑（瀏覽器安全限制無法自動取得）。`, 'info', 5000);
         const repoPath = prompt(`請輸入資料夾的完整路徑：\n\n已選擇的資料夾名稱：${folderName}\n\n例如：D:\\Projects\\${folderName}`);
         if (repoPath && repoPath.trim()) {
           addRepository(repoPath.trim());
@@ -954,7 +1045,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 下一步：到時間範圍選擇
   document.getElementById('nextToTimeRangeBtn').addEventListener('click', () => {
     if (!state.selectedRepo || !state.selectedBranch) {
-      alert('請先選擇儲存庫與分支');
+      showToast('請先選擇儲存庫與分支', 'warning');
       return;
     }
     showPage('time-range');
