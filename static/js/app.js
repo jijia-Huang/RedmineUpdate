@@ -699,10 +699,26 @@ async function loadSettings() {
     document.getElementById('geminiCliPathInput').value = geminiConfig.cli_path || 'gemini';
     document.getElementById('geminiModelSelect').value = geminiConfig.model || 'gemini-2.0-flash-exp';
     
+    // 更新 OpenCode 設定
+    const opencodeConfig = aiConfig.opencode || {};
+    const opencodeCliPathInput = document.getElementById('opencodeCliPathInput');
+    if (opencodeCliPathInput) {
+      opencodeCliPathInput.value = opencodeConfig.cli_path || 'opencode';
+    }
+    
     // 更新超時時間（使用當前 provider 的設定）
-    const currentProviderConfig = aiProvider === 'claude' ? claudeConfig : geminiConfig;
-    // Gemini 預設 120 秒，Claude 預設 60 秒
-    const defaultTimeout = aiProvider === 'gemini' ? 120 : 60;
+    let currentProviderConfig;
+    if (aiProvider === 'claude') {
+      currentProviderConfig = claudeConfig;
+    } else if (aiProvider === 'gemini') {
+      currentProviderConfig = geminiConfig;
+    } else if (aiProvider === 'opencode') {
+      currentProviderConfig = opencodeConfig;
+    } else {
+      currentProviderConfig = claudeConfig;
+    }
+    // Gemini 和 OpenCode 預設 120 秒，Claude 預設 60 秒
+    const defaultTimeout = (aiProvider === 'gemini' || aiProvider === 'opencode') ? 120 : 60;
     document.getElementById('aiTimeoutInput').value = currentProviderConfig.timeout || defaultTimeout;
     
     // 顯示/隱藏對應的設定區塊
@@ -728,13 +744,20 @@ async function loadSettings() {
 function updateAISettingsVisibility(provider) {
   const claudeSettings = document.getElementById('claudeSettings');
   const geminiSettings = document.getElementById('geminiSettings');
+  const opencodeSettings = document.getElementById('opencodeSettings');
   
-  if (provider === 'claude') {
+  // 隱藏所有設定區塊
+  if (claudeSettings) claudeSettings.classList.add('hidden');
+  if (geminiSettings) geminiSettings.classList.add('hidden');
+  if (opencodeSettings) opencodeSettings.classList.add('hidden');
+  
+  // 顯示對應的設定區塊
+  if (provider === 'claude' && claudeSettings) {
     claudeSettings.classList.remove('hidden');
-    geminiSettings.classList.add('hidden');
-  } else {
-    claudeSettings.classList.add('hidden');
+  } else if (provider === 'gemini' && geminiSettings) {
     geminiSettings.classList.remove('hidden');
+  } else if (provider === 'opencode' && opencodeSettings) {
+    opencodeSettings.classList.remove('hidden');
   }
 }
 
@@ -862,6 +885,11 @@ async function saveSettings() {
         gemini: {
           cli_path: document.getElementById('geminiCliPathInput').value,
           model: document.getElementById('geminiModelSelect').value,
+          timeout: timeout,
+          system_prompt_file: 'prompts/redmine_analysis.txt'
+        },
+        opencode: {
+          cli_path: document.getElementById('opencodeCliPathInput')?.value || 'opencode',
           timeout: timeout,
           system_prompt_file: 'prompts/redmine_analysis.txt'
         }
@@ -1130,7 +1158,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const provider = e.target.value;
     updateAISettingsVisibility(provider);
     // 切換 provider 時，更新超時時間的預設值提示
-    const defaultTimeout = provider === 'gemini' ? 120 : 60;
+    const defaultTimeout = (provider === 'gemini' || provider === 'opencode') ? 120 : 60;
     const timeoutInput = document.getElementById('aiTimeoutInput');
     // 如果當前值是預設值，則更新為新 provider 的預設值
     if (!timeoutInput.value || timeoutInput.value === '60' || timeoutInput.value === '120') {

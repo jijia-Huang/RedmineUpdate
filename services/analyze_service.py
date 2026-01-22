@@ -25,7 +25,7 @@ class AnalyzeService:
     
     def __init__(
         self,
-        provider: str = "claude",  # "claude" 或 "gemini"
+        provider: str = "claude",  # "claude"、"gemini" 或 "opencode"
         cli_path: str = "claude",
         timeout: int = None,  # None 表示使用預設值
         system_prompt_file: str = "prompts/redmine_analysis.txt",
@@ -35,17 +35,20 @@ class AnalyzeService:
         初始化分析服務
         
         Args:
-            provider: AI 服務提供者（"claude" 或 "gemini"）
+            provider: AI 服務提供者（"claude"、"gemini" 或 "opencode"）
             cli_path: CLI 執行檔路徑
             timeout: 執行超時時間（秒）
             system_prompt_file: 系統提示詞檔案路徑
-            model: 模型名稱（Claude: haiku/sonnet/opus, Gemini: gemini-2.0-flash-exp/gemini-1.5-pro 等）
+            model: 模型名稱（Claude: haiku/sonnet/opus, Gemini: gemini-2.0-flash-exp/gemini-1.5-pro 等, OpenCode: 不使用）
         """
         self.provider = provider.lower()
         self.cli_path = cli_path
-        # 根據 provider 設定預設超時時間：Gemini 需要更長時間
+        # 根據 provider 設定預設超時時間：Gemini 和 OpenCode 需要更長時間
         if timeout is None:
-            self.timeout = 120 if self.provider == "gemini" else 60
+            if self.provider == "gemini" or self.provider == "opencode":
+                self.timeout = 120
+            else:
+                self.timeout = 60
         else:
             self.timeout = timeout
         self.system_prompt_file = Path(system_prompt_file)
@@ -131,7 +134,14 @@ class AnalyzeService:
         Returns:
             (是否可用, 錯誤訊息)
         """
-        provider_name = "Claude CLI" if self.provider == "claude" else "Gemini CLI"
+        if self.provider == "claude":
+            provider_name = "Claude CLI"
+        elif self.provider == "gemini":
+            provider_name = "Gemini CLI"
+        elif self.provider == "opencode":
+            provider_name = "OpenCode CLI"
+        else:
+            provider_name = "AI CLI"
 
         resolved = self._resolve_cli_path()
         if not resolved:
@@ -157,24 +167,16 @@ class AnalyzeService:
                     return True, None
                 return False, err or f"{provider_name} 暫時不可用（快取結果）。"
 
-            if self.provider == "gemini" and self._gemini_use_npx:
-                # `npx gemini --version`
-                check_cmd = [resolved, "--yes", "gemini", "--version"]
-            else:
-                check_cmd = [resolved, "--version"]
+            # Gemini CLI 跳過 --version 檢查（某些環境會很慢或卡住）
+            if self.provider == "gemini":
+                logger.info(f"跳過 {provider_name} 的 --version 檢查，直接使用解析後的路徑")
+                self.cli_path = resolved
+                self._CLI_CHECK_CACHE[cache_key] = {"ok": True, "error": None, "ts": now}
+                return True, None
 
-            # 增加檢查超時時間，特別是 Gemini CLI 可能需要更長時間來回應
-            # Gemini 某些環境第一次啟動會很慢；檢查 timeout 取 min(30, self.timeout) 但至少 10 秒
-            if self.provider == "gemini":
-                check_timeout = max(10, min(30, int(self.timeout) if isinstance(self.timeout, int) else 30))
-            else:
-                check_timeout = 5
-            
-            # 對於 Gemini CLI（使用 Node.js），抑制 deprecation warnings
-            env = os.environ.copy()
-            if self.provider == "gemini":
-                # 抑制 Node.js deprecation warnings（如 punycode 模組警告）
-                env["NODE_NO_WARNINGS"] = "1"
+            # 其他 provider（Claude、OpenCode）執行 --version 檢查
+            check_cmd = [resolved, "--version"]
+            check_timeout = 5
             
             result = subprocess.run(
                 check_cmd,
@@ -183,7 +185,6 @@ class AnalyzeService:
                 encoding="utf-8",
                 errors="replace",
                 timeout=check_timeout,
-                env=env,
             )
             if result.returncode != 0:
                 stderr = (result.stderr or "").strip()
@@ -335,7 +336,14 @@ class AnalyzeService:
             issue_id, issue_title, start_date, end_date, commit_list_text
         )
         
-        provider_name = "Claude CLI" if self.provider == "claude" else "Gemini CLI"
+        if self.provider == "claude":
+            provider_name = "Claude CLI"
+        elif self.provider == "gemini":
+            provider_name = "Gemini CLI"
+        elif self.provider == "opencode":
+            provider_name = "OpenCode CLI"
+        else:
+            provider_name = "AI CLI"
         logger.info(f"系統提示詞已載入，準備呼叫 {provider_name}...")
         
         # 準備 CLI 輸入資料（JSON 格式）
@@ -371,6 +379,44 @@ class AnalyzeService:
                     "--model",
                     self.model,
                 ]
+            elif self.provider == "opencode":
+                # OpenCode CLI 命令格式：opencode run "prompt" --format json
+                # 讀取系統提示詞並與用戶提示合併
+                with open(self.system_prompt_file, 'r', encoding='utf-8') as f:
+                    system_prompt_content = f.read()
+                
+                # 替換系統提示詞中的佔位符
+                system_prompt_content = system_prompt_content.replace("{issue_id}", str(issue_id))
+                system_prompt_content = system_prompt_content.replace("{issue_title}", str(issue_title))
+                system_prompt_content = system_prompt_content.replace("{start_date}", str(start_date))
+                system_prompt_content = system_prompt_content.replace("{end_date}", str(end_date))
+                system_prompt_content = system_prompt_content.replace("{commit_list}", commit_list_text)
+                
+                # OpenCode CLI 使用 run 指令，將系統提示詞和資料合併到提示中
+                # 注意：將換行符號替換為空格，避免命令列執行問題
+                full_prompt = f"{system_prompt_content}\n\n【輸入資料（commit JSON）】\n{commit_data_json}"
+                # 將換行符號替換為空格，保持內容連貫
+                full_prompt_single_line = full_prompt.replace('\n', ' ').replace('\r', ' ')
+                # 移除多餘的空格（連續空格變為單一空格）
+                import re
+                full_prompt_single_line = re.sub(r'\s+', ' ', full_prompt_single_line).strip()
+                
+                logger.info(f"執行 OpenCode CLI (超時: {self.timeout}秒)...")
+                cmd = [
+                    self.cli_path,
+                    "run",
+                    full_prompt_single_line,
+                    "--format",
+                    "json",
+                ]
+                # 顯示完整命令以便調試（prompt 可能很長，但完整顯示有助於除錯）
+                cmd_str = f"{cmd[0]} {cmd[1]} \"{cmd[2]}\" {' '.join(cmd[3:])}"
+                logger.info(f"OpenCode CLI 完整命令 (prompt 長度: {len(full_prompt_single_line)} 字元):")
+                logger.info(f"  {cmd_str}")
+                # 如果 prompt 很長，也顯示前 200 字元預覽
+                if len(full_prompt_single_line) > 200:
+                    logger.info(f"  Prompt 預覽 (前 200 字元): {full_prompt_single_line[:200]}...")
+            
             else:  # gemini
                 # Gemini CLI 命令格式
                 # 讀取系統提示詞並與用戶提示合併
@@ -398,6 +444,12 @@ class AnalyzeService:
                 )
                 full_prompt = f"{no_tools_guard}\n\n{system_prompt_content}\n\n【輸入資料（commit JSON）】\n{commit_data_json}"
                 
+                # 將換行符號替換為空格，避免命令列執行問題
+                import re
+                full_prompt_single_line = full_prompt.replace('\n', ' ').replace('\r', ' ')
+                # 移除多餘的空格（連續空格變為單一空格）
+                full_prompt_single_line = re.sub(r'\s+', ' ', full_prompt_single_line).strip()
+                
                 # 處理 Auto 模型選項：根據模型名稱選擇實際使用的模型
                 actual_model = self._resolve_gemini_model(self.model)
                 
@@ -410,7 +462,7 @@ class AnalyzeService:
                         "--yes",
                         "gemini",
                         "-p",
-                        full_prompt,
+                        full_prompt_single_line,
                         "--output-format",
                         "json",
                         "-m",
@@ -421,7 +473,7 @@ class AnalyzeService:
                     cmd = [
                         self.cli_path,
                         "-p",
-                        full_prompt,
+                        full_prompt_single_line,
                         "--output-format",
                         "json",
                         "-m",
@@ -446,7 +498,7 @@ class AnalyzeService:
             
             result = subprocess.run(
                 cmd,
-                input=commit_data_json if self.provider == "claude" else None,  # Claude 用 stdin，Gemini 用 -p 參數
+                input=commit_data_json if self.provider == "claude" else None,  # Claude 用 stdin，Gemini/OpenCode 用參數
                 capture_output=True,
                 text=True,
                 encoding='utf-8',  # 明確指定 UTF-8 編碼
@@ -459,6 +511,63 @@ class AnalyzeService:
 
             stdout = (result.stdout or "").strip()
             stderr = (result.stderr or "").strip()
+            
+            # 對於 OpenCode CLI，輸出是多行 JSON（每行一個 JSON 物件）
+            if self.provider == "opencode":
+                # 如果 stdout 為空，嘗試從 stderr 讀取（OpenCode 可能將輸出寫到 stderr）
+                if not stdout and stderr:
+                    logger.info("OpenCode CLI stdout 為空，嘗試從 stderr 讀取輸出")
+                    # 檢查 stderr 是否包含 JSON
+                    if '{' in stderr or '[' in stderr:
+                        stdout = stderr
+                        stderr = ""
+                        logger.info("從 stderr 找到 JSON 輸出，已切換到 stdout")
+                
+                # 記錄原始輸出以便除錯
+                logger.info(f"OpenCode CLI 原始 stdout 長度: {len(stdout)} 字元")
+                logger.info(f"OpenCode CLI 原始 stderr 長度: {len(stderr)} 字元")
+                if stdout:
+                    logger.info(f"OpenCode CLI stdout 前 500 字元: {stdout[:500]}")
+                if stderr:
+                    logger.info(f"OpenCode CLI stderr 前 500 字元: {stderr[:500]}")
+                
+                # 從多行 JSON 中提取所有 type: "text" 的 part.text
+                text_parts = []
+                all_lines = stdout.split('\n') if stdout else []
+                
+                for line in all_lines:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                        obj_type = obj.get('type', '')
+                        logger.debug(f"OpenCode CLI JSON 物件類型: {obj_type}")
+                        
+                        if obj_type == 'text' and 'part' in obj:
+                            part = obj.get('part', {})
+                            if 'text' in part:
+                                text_parts.append(part['text'])
+                                logger.debug(f"找到 text 片段，長度: {len(part['text'])} 字元")
+                        elif obj_type == 'step_finish':
+                            # step_finish 表示完成，可以記錄但不需要提取文字
+                            logger.info("OpenCode CLI 收到 step_finish 訊號")
+                    except json.JSONDecodeError as e:
+                        # 記錄無法解析的行以便除錯
+                        logger.debug(f"無法解析 JSON 行: {line[:100]}... (錯誤: {e})")
+                        continue
+                
+                # 合併所有文字部分
+                if text_parts:
+                    stdout = '\n'.join(text_parts)
+                    logger.info(f"OpenCode CLI 提取了 {len(text_parts)} 個文字片段，總長度: {len(stdout)} 字元")
+                else:
+                    logger.warning("OpenCode CLI 沒有找到 type: 'text' 的輸出")
+                    # 如果沒有找到 text，但 stdout 有內容，可能是格式不同，嘗試直接使用
+                    if stdout and ('{' in stdout or '[' in stdout):
+                        logger.info("雖然沒有找到 type: 'text'，但 stdout 包含 JSON，嘗試直接解析")
+                    else:
+                        stdout = ""
             
             # 對於 Gemini CLI，如果 stdout 為空但 stderr 有內容，可能是輸出到了 stderr
             if self.provider == "gemini" and not stdout and stderr:
@@ -908,7 +1017,14 @@ class AnalyzeService:
                 )
         
         except subprocess.TimeoutExpired as e:
-            provider_name = "Claude CLI" if self.provider == "claude" else "Gemini CLI"
+            if self.provider == "claude":
+                provider_name = "Claude CLI"
+            elif self.provider == "gemini":
+                provider_name = "Gemini CLI"
+            elif self.provider == "opencode":
+                provider_name = "OpenCode CLI"
+            else:
+                provider_name = "AI CLI"
             logger.error(f"{provider_name} 執行超時（超過 {self.timeout} 秒）")
             # 記錄命令（隱藏 prompt 內容）
             if 'cmd' in locals():

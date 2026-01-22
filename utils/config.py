@@ -78,7 +78,7 @@ def get_default_config() -> Dict[str, Any]:
             "auto_detect": True
         },
         "ai": {
-            "provider": "claude",  # "claude" 或 "gemini"
+            "provider": "claude",  # "claude"、"gemini" 或 "opencode"
             "claude": {
                 "cli_path": "claude",
                 "model": "haiku",
@@ -89,6 +89,11 @@ def get_default_config() -> Dict[str, Any]:
                 "cli_path": "gemini",
                 "model": "gemini-2.0-flash-exp",  # 可選：gemini-2.0-flash-exp, gemini-1.5-pro 等
                 "timeout": 60,
+                "system_prompt_file": "prompts/redmine_analysis.txt"
+            },
+            "opencode": {
+                "cli_path": "opencode",
+                "timeout": 120,
                 "system_prompt_file": "prompts/redmine_analysis.txt"
             }
         },

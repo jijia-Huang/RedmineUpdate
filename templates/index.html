@@ -308,6 +308,7 @@
               <select id="aiProviderSelect" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="claude">Claude CLI</option>
                 <option value="gemini">Gemini CLI</option>
+                <option value="opencode">OpenCode CLI</option>
               </select>
             </div>
             
@@ -355,10 +356,19 @@
               </div>
             </div>
             
+            <!-- OpenCode 設定 -->
+            <div id="opencodeSettings" class="space-y-4 hidden">
+              <div>
+                <label class="block text-sm font-medium text-slate-700 mb-2">OpenCode CLI 路徑：</label>
+                <input type="text" id="opencodeCliPathInput" value="opencode" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+              </div>
+              <p class="text-xs text-slate-500">OpenCode CLI 不需要指定模型，會自動使用預設模型。</p>
+            </div>
+            
             <div>
               <label class="block text-sm font-medium text-slate-700 mb-2">超時時間（秒）：</label>
               <input type="number" id="aiTimeoutInput" min="10" max="600" value="120" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <p class="mt-1 text-xs text-slate-500">建議：Gemini 使用 120 秒以上，Claude 使用 60 秒以上</p>
+              <p class="mt-1 text-xs text-slate-500">建議：Gemini 和 OpenCode 使用 120 秒以上，Claude 使用 60 秒以上</p>
             </div>
           </div>
         </div>

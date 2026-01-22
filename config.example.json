@@ -24,6 +24,11 @@
       "model": "gemini-2.0-flash-exp",
       "timeout": 60,
       "system_prompt_file": "prompts/redmine_analysis.txt"
+    },
+    "opencode": {
+      "cli_path": "opencode",
+      "timeout": 120,
+      "system_prompt_file": "prompts/redmine_analysis.txt"
     }
   },
   "claude": {
