@@ -132,8 +132,10 @@ class RedmineService:
             # 更新備註
             if notes:
                 try:
-                    issue.notes = notes
-                    update_data['notes'] = notes
+                    # 將換行符號轉換為 HTML <br> 標籤，以便在 Redmine 中正確顯示換行
+                    notes_html = notes.replace('\r\n', '<br>').replace('\n', '<br>').replace('\r', '<br>')
+                    issue.notes = notes_html
+                    update_data['notes'] = notes_html
                     result['updated_fields'].append('notes')
                 except Exception as e:
                     result['failed_fields'].append('notes')
