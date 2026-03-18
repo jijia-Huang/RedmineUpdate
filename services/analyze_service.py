@@ -4,6 +4,7 @@ AI 分析服務
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -397,8 +398,6 @@ class AnalyzeService:
                 full_prompt = f"{system_prompt_content}\n\n【輸入資料（commit JSON）】\n{commit_data_json}"
                 # 將換行符號替換為空格，保持內容連貫
                 full_prompt_single_line = full_prompt.replace('\n', ' ').replace('\r', ' ')
-                # 移除多餘的空格（連續空格變為單一空格）
-                import re
                 full_prompt_single_line = re.sub(r'\s+', ' ', full_prompt_single_line).strip()
                 
                 logger.info(f"執行 OpenCode CLI (超時: {self.timeout}秒)...")
@@ -418,23 +417,15 @@ class AnalyzeService:
                     logger.info(f"  Prompt 預覽 (前 200 字元): {full_prompt_single_line[:200]}...")
             
             else:  # gemini
-                # Gemini CLI 命令格式
-                # 讀取系統提示詞並與用戶提示合併
                 with open(self.system_prompt_file, 'r', encoding='utf-8') as f:
                     system_prompt_content = f.read()
                 
-                # 替換系統提示詞中的佔位符
                 system_prompt_content = system_prompt_content.replace("{issue_id}", str(issue_id))
                 system_prompt_content = system_prompt_content.replace("{issue_title}", str(issue_title))
                 system_prompt_content = system_prompt_content.replace("{start_date}", str(start_date))
                 system_prompt_content = system_prompt_content.replace("{end_date}", str(end_date))
                 system_prompt_content = system_prompt_content.replace("{commit_list}", commit_list_text)
                 
-                # Gemini CLI 使用 -p 指定提示
-                # 構建完整的提示（系統提示 + 資料）
-                # 注意：Gemini CLI 可能不支援系統提示詞檔案，所以我們將系統提示詞和資料合併到提示中
-                # 另外：Gemini CLI 可能會啟用工具模式，模型會嘗試呼叫工具（例如 run_shell_command）
-                # 在我們這個後端場景不需要、也不允許工具使用，因此用強制規則壓制。
                 no_tools_guard = (
                     "【強制規則】\n"
                     "1) 你不得呼叫任何工具/指令/外部能力（包含但不限於 run_shell_command、Bash、File system）。\n"
@@ -442,69 +433,51 @@ class AnalyzeService:
                     "3) JSON 必須包含以下欄位：summary, completed_items, technical_details, blockers, next_steps, estimated_hours, suggested_percent_done。\n"
                     "4) 若無資料請用空陣列 [] 或空字串 \"\"，estimated_hours 用數字，suggested_percent_done 用 0-100 整數。\n"
                 )
-                full_prompt = f"{no_tools_guard}\n\n{system_prompt_content}\n\n【輸入資料（commit JSON）】\n{commit_data_json}"
+                gemini_stdin_prompt = f"{no_tools_guard}\n\n{system_prompt_content}\n\n【輸入資料（commit JSON）】\n{commit_data_json}"
                 
-                # 將換行符號替換為空格，避免命令列執行問題
-                import re
-                full_prompt_single_line = full_prompt.replace('\n', ' ').replace('\r', ' ')
-                # 移除多餘的空格（連續空格變為單一空格）
-                full_prompt_single_line = re.sub(r'\s+', ' ', full_prompt_single_line).strip()
-                
-                # 處理 Auto 模型選項：根據模型名稱選擇實際使用的模型
                 actual_model = self._resolve_gemini_model(self.model)
                 
-                logger.info(f"執行 Gemini CLI (模型: {self.model} -> {actual_model}, 超時: {self.timeout}秒)...")
+                logger.info(f"執行 Gemini CLI (模型: {self.model} -> {actual_model}, 超時: {self.timeout}秒, prompt 長度: {len(gemini_stdin_prompt)} 字元)")
                 if self._gemini_use_npx:
-                    # 使用 npx 執行 gemini（避免 PATH 找不到 gemini）
-                    # 根據文件：使用 -p 指定 prompt，--output-format json，-m 指定模型
                     cmd = [
-                        self.cli_path,
-                        "--yes",
-                        "gemini",
-                        "-p",
-                        full_prompt_single_line,
-                        "--output-format",
-                        "json",
-                        "-m",
-                        actual_model,
+                        self.cli_path, "--yes", "gemini",
+                        "--output-format", "json",
+                        "-m", actual_model,
                     ]
                 else:
-                    # 根據文件：使用 -p 指定 prompt，--output-format json，-m 指定模型
                     cmd = [
                         self.cli_path,
-                        "-p",
-                        full_prompt_single_line,
-                        "--output-format",
-                        "json",
-                        "-m",
-                        actual_model,
+                        "--output-format", "json",
+                        "-m", actual_model,
                     ]
                 
-                # 記錄完整命令以便除錯（不記錄完整 prompt，因為可能很長）
-                # 構建可讀的命令字串（隱藏 prompt 內容）
-                if self._gemini_use_npx:
-                    # npx 模式：npx --yes gemini -p [prompt] --output-format json -m model
-                    cmd_preview = f"{cmd[0]} {cmd[1]} {cmd[2]} {cmd[3]} [prompt...] {' '.join(cmd[5:])}"
-                else:
-                    # 直接模式：gemini -p [prompt] --output-format json -m model
-                    cmd_preview = f"{cmd[0]} {cmd[1]} [prompt...] {' '.join(cmd[3:])}"
+                cmd_preview = f"{cmd[0]} --output-format json -m {actual_model} (prompt via stdin)"
                 logger.info(f"Gemini CLI 命令: {cmd_preview}")
             
-            # 對於 Gemini CLI（使用 Node.js），抑制 deprecation warnings
             env = os.environ.copy()
             if self.provider == "gemini":
-                # 抑制 Node.js deprecation warnings（如 punycode 模組警告）
                 env["NODE_NO_WARNINGS"] = "1"
+            
+            if self.provider == "claude":
+                stdin_data = commit_data_json
+            elif self.provider == "gemini":
+                stdin_data = gemini_stdin_prompt
+            else:
+                stdin_data = ""
+            
+            # Windows 上 .CMD 批次檔需要 shell=True 才能正確執行
+            use_shell = os.name == "nt"
             
             result = subprocess.run(
                 cmd,
-                input=commit_data_json if self.provider == "claude" else None,  # Claude 用 stdin，Gemini/OpenCode 用參數
+                input=stdin_data,
                 capture_output=True,
                 text=True,
-                encoding='utf-8',  # 明確指定 UTF-8 編碼
-                errors='replace',  # 遇到無法解碼的字元時替換為，而不是拋出異常
+                encoding='utf-8',
+                errors='replace',
                 timeout=self.timeout,
                 env=env,
+                shell=use_shell,
             )
             
             logger.info(f"{provider_name} 執行完成 (returncode={result.returncode})")
