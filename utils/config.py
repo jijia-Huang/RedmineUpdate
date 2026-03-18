@@ -87,7 +87,7 @@ def get_default_config() -> Dict[str, Any]:
             },
             "gemini": {
                 "cli_path": "gemini",
-                "model": "gemini-2.0-flash-exp",  # 可選：gemini-2.0-flash-exp, gemini-1.5-pro 等
+                "model": "gemini-2.5-flash",  # 可選：gemini-2.5-flash, gemini-2.5-pro 等
                 "timeout": 60,
                 "system_prompt_file": "prompts/redmine_analysis.txt"
             },

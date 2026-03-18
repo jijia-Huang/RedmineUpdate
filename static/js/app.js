@@ -256,8 +256,8 @@ async function loadIssues(statusId = null, search = null) {
   const issueList = document.getElementById('issueList');
   const emptyState = document.getElementById('emptyState');
   
-  loadingState.style.display = 'block';
-  emptyState.classList.add('hidden');
+  if (loadingState) loadingState.style.display = 'block';
+  if (emptyState) emptyState.classList.add('hidden');
   issueList.innerHTML = '';
   
   try {
@@ -268,10 +268,10 @@ async function loadIssues(statusId = null, search = null) {
     const data = await apiCall(`/issues?${params.toString()}`);
     state.issues = data.issues || [];
     
-    loadingState.style.display = 'none';
+    if (loadingState) loadingState.style.display = 'none';
     
     if (state.issues.length === 0) {
-      emptyState.classList.remove('hidden');
+      if (emptyState) emptyState.classList.remove('hidden');
       return;
     }
     
@@ -280,7 +280,7 @@ async function loadIssues(statusId = null, search = null) {
       issueList.appendChild(card);
     });
   } catch (error) {
-    loadingState.style.display = 'none';
+    if (loadingState) loadingState.style.display = 'none';
     showToast(`載入工單失敗：${error.message}`, 'error');
   }
 }
@@ -697,7 +697,7 @@ async function loadSettings() {
     // 更新 Gemini 設定
     const geminiConfig = aiConfig.gemini || {};
     document.getElementById('geminiCliPathInput').value = geminiConfig.cli_path || 'gemini';
-    document.getElementById('geminiModelSelect').value = geminiConfig.model || 'gemini-2.0-flash-exp';
+    document.getElementById('geminiModelSelect').value = geminiConfig.model || 'gemini-2.5-flash';
     
     // 更新 OpenCode 設定
     const opencodeConfig = aiConfig.opencode || {};

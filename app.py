@@ -424,7 +424,7 @@ async def analyze_commits(request: AnalyzeRequest):
         # Gemini CLI 和 OpenCode CLI 通常需要更長的超時時間，特別是處理大量 commit 時
         default_timeout = 120 if provider in ('gemini', 'opencode') else 60
         # OpenCode 不使用 model 參數，其他 provider 需要
-        default_model = 'haiku' if provider == 'claude' else ('gemini-2.0-flash-exp' if provider == 'gemini' else '')
+        default_model = 'haiku' if provider == 'claude' else ('gemini-2.5-flash' if provider == 'gemini' else '')
         analyze_service = AnalyzeService(
             provider=provider,
             cli_path=provider_config.get('cli_path', provider),
